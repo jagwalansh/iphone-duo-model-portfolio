@@ -1,0 +1,195 @@
+/* ==========================================================================
+   ANSH JAGWAL · APPLE DUO 3D PORTFOLIO (PURE LIGHT MODE · PHONE ONLY)
+   ========================================================================== */
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+:root {
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif;
+  --font-mono: 'JetBrains Mono', SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+
+  /* Pristine Apple Studio Light Palette */
+  --studio-bg: #f5f5f7;
+  --studio-paper: #ffffff;
+  --studio-ink: #111827;
+
+  --duo-paper: #f5f5f7;
+  --duo-ink: #111827;
+}
+
+html, body {
+  width: 100vw;
+  height: 100vh;
+  height: 100dvh;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  background: var(--studio-bg);
+  color: var(--studio-ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Full Viewport Canvas - Zero clutter, pure light studio ambiance */
+.studio-canvas {
+  width: 100vw;
+  height: 100vh;
+  height: 100dvh;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  position: relative;
+  background: radial-gradient(circle at 50% 40%, #ffffff 0%, #f4f5f8 55%, #eaebee 100%);
+}
+
+.studio-canvas .duo-root {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.fullscreen-phone-container {
+  width: 100vw;
+  height: 100vh;
+  height: 100dvh;
+  position: relative;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.fullscreen-phone-container .duo-device {
+  width: 100vw;
+  height: 100vh;
+  height: 100dvh;
+  position: relative;
+}
+
+.fullscreen-phone-container canvas {
+  width: 100% !important;
+  height: 100% !important;
+  display: block;
+}
+
+/* Make click/touch target fill the exact area of the phone */
+.duo-device-target {
+  position: absolute;
+  inset: 4% 10%;
+  border: 0;
+  border-radius: 40px;
+  background: transparent;
+  cursor: pointer;
+  touch-action: pan-y;
+}
+
+.duo-device-target:active {
+  cursor: grabbing;
+}
+
+.duo-device-target:focus-visible {
+  outline: none;
+}
+
+/* Discreet floating HUD for manual size adjustment */
+.size-hud {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 18px;
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.88);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.08);
+  font-size: 12px;
+  color: var(--studio-ink);
+  min-width: 220px;
+  animation: hudFadeIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes hudFadeIn {
+  from { opacity: 0; transform: translateY(-6px) scale(0.96); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.size-hud-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-weight: 700;
+  font-size: 12px;
+}
+
+.size-hud-close {
+  border: none;
+  background: transparent;
+  font-size: 13px;
+  color: #9ca3af;
+  padding: 2px 4px;
+  border-radius: 4px;
+}
+
+.size-hud-close:hover {
+  color: #111827;
+}
+
+.size-hud-body {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.size-hud-body input[type="range"] {
+  flex: 1;
+  accent-color: var(--studio-ink);
+  cursor: ew-resize;
+}
+
+.size-hud-body output {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  font-size: 12px;
+  min-width: 40px;
+  text-align: right;
+}
+
+.size-hud-presets {
+  display: flex;
+  gap: 6px;
+  justify-content: space-between;
+}
+
+.preset-btn {
+  flex: 1;
+  padding: 4px 6px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.04);
+  border: 1px solid rgba(0, 0, 0, 0.04);
+  font-size: 10px;
+  font-weight: 600;
+  transition: all 0.15s ease;
+}
+
+.preset-btn:hover {
+  background: rgba(0, 0, 0, 0.08);
+}
+
+.preset-btn.active {
+  background: var(--studio-ink);
+  color: #ffffff;
+}
