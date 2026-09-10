@@ -43,7 +43,7 @@ function PhoneDeviceSurface({
   className = '',
   ...props
 }: PhoneDeviceProps) {
-  const { progress, setValue, toggle } = useFoldablePhone()
+  const { progress, setValue, toggle, animateTo } = useFoldablePhone()
   const reducedMotion = useReducedMotion()
   const canvas = useRef<HTMLCanvasElement>(null)
   const surface = useRef<Surface | undefined>(undefined)
@@ -222,8 +222,32 @@ function PhoneDeviceSurface({
         start.moved = true
         setValue(start.value + delta / (event.currentTarget.clientWidth * 0.5))
       }}
-      onPointerUp={() => { suppressClick.current = drag.current?.moved ?? false; drag.current = undefined }}
-      onPointerCancel={() => { if (drag.current) setValue(drag.current.value); drag.current = undefined; suppressClick.current = true }}
+      onPointerUp={() => {
+        if (drag.current?.moved) {
+          suppressClick.current = true
+          const currentVal = progress.get()
+          if (currentVal >= 0.45) {
+            animateTo(1)
+          } else {
+            animateTo(0)
+          }
+        } else {
+          suppressClick.current = false
+        }
+        drag.current = undefined
+      }}
+      onPointerCancel={() => {
+        if (drag.current?.moved) {
+          const currentVal = progress.get()
+          if (currentVal >= 0.45) {
+            animateTo(1)
+          } else {
+            animateTo(0)
+          }
+        }
+        drag.current = undefined
+        suppressClick.current = true
+      }}
       onClick={event => {
         if (!suppressClick.current) {
           const rect = event.currentTarget.getBoundingClientRect()

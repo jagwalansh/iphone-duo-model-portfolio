@@ -203,11 +203,11 @@ export function generateCoverScreenTexture(theme: ScreenTheme): string {
   ctx.textAlign = 'center'
   ctx.fillStyle = isDark ? '#ffffff' : '#09090b'
   ctx.font = '700 16px -apple-system, BlinkMacSystemFont, "SF Pro Display", sans-serif'
-  ctx.fillText('◂ ──  TAP PHONE OR CLICK UNFOLD  ── ▸', 400, 968)
+  ctx.fillText('◂ ──  SCROLL DOWN OR TAP TO UNFOLD  ── ▸', 400, 968)
 
   ctx.fillStyle = isDark ? 'rgba(255, 255, 255, 0.5)' : 'rgba(0, 0, 0, 0.5)'
   ctx.font = '400 13px -apple-system, sans-serif'
-  ctx.fillText('Unfold to launch Dual-Screen Work & Projects Studio', 400, 1025)
+  ctx.fillText('Scroll down or click to launch Dual-Screen Work & Projects Studio', 400, 1025)
 
   // Apple home bar at bottom
   ctx.fillStyle = isDark ? 'rgba(255, 255, 255, 0.5)' : 'rgba(0, 0, 0, 0.35)'
@@ -292,7 +292,7 @@ export function generateInnerScreenTexture(activeProject: Project, theme: Screen
   // Project List / Navigation Menu (y: 170 - 740)
   ctx.fillStyle = isDark ? 'rgba(255, 255, 255, 0.35)' : 'rgba(0, 0, 0, 0.35)'
   ctx.font = '700 12px -apple-system, sans-serif'
-  ctx.fillText('INDEX OF PROJECTS (SELECT TO PREVIEW)', 50, 185)
+  ctx.fillText('INDEX OF PROJECTS  •  SCROLL DOWN TO BROWSE', 50, 185)
 
   let startY = 205
   PORTFOLIO_DATA.projects.forEach((proj, index) => {
@@ -403,7 +403,7 @@ export function generateInnerScreenTexture(activeProject: Project, theme: Screen
   ctx.textAlign = 'right'
   ctx.fillStyle = isDark ? 'rgba(255, 255, 255, 0.6)' : 'rgba(0, 0, 0, 0.5)'
   ctx.font = '600 13px -apple-system, sans-serif'
-  ctx.fillText('LIVE PROJECT SHOWCASE', 1540, 48)
+  ctx.fillText('SCROLL UP TO FOLD  •  LIVE SHOWCASE', 1540, 48)
   ctx.textAlign = 'left'
 
   // Category Tag Pill

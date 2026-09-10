@@ -277,6 +277,133 @@ function InteractivePhone({
     }
   }, [onUpdateScale, animateTo, toggle, onCycleProject, onToggleSlider, progress])
 
+  // Scroll, Wheel & Touch Gestures for Fold / Unfold & Project Navigation
+  useEffect(() => {
+    let accumulatedDeltaY = 0
+    let accumulatedDeltaX = 0
+    let lastWheelTime = 0
+    let resetTimer: ReturnType<typeof setTimeout> | null = null
+    let lastFoldActionTime = 0
+    let lastProjectCycleTime = 0
+
+    function handleWheel(e: WheelEvent) {
+      // Allow interaction with on-screen scale HUD without hijacking
+      if ((e.target as HTMLElement)?.closest?.('.size-hud')) {
+        return
+      }
+
+      // Prevent native page bounce and trackpad history gestures
+      e.preventDefault()
+
+      const now = Date.now()
+      const isFolded = progress.get() < 0.5
+
+      // Reset accumulation if wheel events have settled
+      if (now - lastWheelTime > 180) {
+        accumulatedDeltaY = 0
+        accumulatedDeltaX = 0
+      }
+      lastWheelTime = now
+
+      accumulatedDeltaY += e.deltaY
+      accumulatedDeltaX += e.deltaX
+
+      if (resetTimer) clearTimeout(resetTimer)
+      resetTimer = setTimeout(() => {
+        accumulatedDeltaY = 0
+        accumulatedDeltaX = 0
+      }, 220)
+
+      // Forward direction = scroll down (wheel down, trackpad 2-finger swipe down) or right
+      const isScrollingForward = accumulatedDeltaY > 15 || accumulatedDeltaX > 18
+      // Backward direction = scroll up (wheel up, trackpad 2-finger swipe up) or left
+      const isScrollingBackward = accumulatedDeltaY < -15 || accumulatedDeltaX < -18
+
+      if (isFolded) {
+        // When folded shut: scrolling down/forward opens the phone!
+        if (isScrollingForward) {
+          animateTo(1)
+          lastFoldActionTime = now
+          accumulatedDeltaY = 0
+          accumulatedDeltaX = 0
+        }
+      } else {
+        // When unfolded:
+        if (isScrollingBackward) {
+          // Scrolling up/backward folds the phone back shut!
+          animateTo(0)
+          lastFoldActionTime = now
+          accumulatedDeltaY = 0
+          accumulatedDeltaX = 0
+        } else if (isScrollingForward) {
+          // Scrolling down while open cycles to next project
+          // (Requires settled phone state and debounce so opening inertia doesn't trigger it)
+          const isOpenAndSettled = progress.get() >= 0.85 && (now - lastFoldActionTime > 900)
+          if (isOpenAndSettled && now - lastProjectCycleTime > 420 && Math.abs(accumulatedDeltaY) > 45) {
+            const total = PORTFOLIO_DATA.projects.length
+            const next = (projectIdxRef.current + 1) % total
+            onCycleProject(next)
+            lastProjectCycleTime = now
+            accumulatedDeltaY = 0
+            accumulatedDeltaX = 0
+          }
+        }
+      }
+    }
+
+    // Touch swipe gestures for mobile & touch displays
+    let touchStartY = 0
+    let touchStartX = 0
+    let touchStartTime = 0
+
+    function handleTouchStart(e: TouchEvent) {
+      if ((e.target as HTMLElement)?.closest?.('.size-hud')) return
+      if (e.touches.length === 1) {
+        touchStartY = e.touches[0].clientY
+        touchStartX = e.touches[0].clientX
+        touchStartTime = Date.now()
+      }
+    }
+
+    function handleTouchEnd(e: TouchEvent) {
+      if ((e.target as HTMLElement)?.closest?.('.size-hud')) return
+      if (e.changedTouches.length === 1) {
+        const deltaY = touchStartY - e.changedTouches[0].clientY // > 0: swipe up (scroll down)
+        const deltaX = touchStartX - e.changedTouches[0].clientX // > 0: swipe left (scroll forward)
+        const duration = Date.now() - touchStartTime
+
+        if (duration < 650) {
+          const isFolded = progress.get() < 0.5
+          const isSwipeForward = deltaY > 32 || deltaX > 32
+          const isSwipeBackward = deltaY < -32 || deltaX < -32
+
+          if (isFolded && isSwipeForward) {
+            animateTo(1)
+            lastFoldActionTime = Date.now()
+          } else if (!isFolded && isSwipeBackward) {
+            animateTo(0)
+            lastFoldActionTime = Date.now()
+          } else if (!isFolded && isSwipeForward && progress.get() >= 0.85) {
+            const total = PORTFOLIO_DATA.projects.length
+            const next = (projectIdxRef.current + 1) % total
+            onCycleProject(next)
+          }
+        }
+      }
+    }
+
+    window.addEventListener('wheel', handleWheel, { passive: false })
+    window.addEventListener('touchstart', handleTouchStart, { passive: true })
+    window.addEventListener('touchend', handleTouchEnd, { passive: true })
+
+    return () => {
+      window.removeEventListener('wheel', handleWheel)
+      window.removeEventListener('touchstart', handleTouchStart)
+      window.removeEventListener('touchend', handleTouchEnd)
+      if (resetTimer) clearTimeout(resetTimer)
+    }
+  }, [progress, animateTo, onCycleProject])
+
   // Keyboard controls
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
@@ -288,12 +415,25 @@ function InteractivePhone({
       } else if (e.key === ' ' || e.key === 'Enter' || e.key.toLowerCase() === 'f') {
         e.preventDefault()
         toggle()
-      } else if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
+      } else if (e.key === 'ArrowDown' || e.key === 'PageDown') {
+        e.preventDefault()
+        if (progress.get() < 0.5) {
+          animateTo(1)
+        } else {
+          const total = PORTFOLIO_DATA.projects.length
+          onCycleProject((projectIndex + 1) % total)
+        }
+      } else if (e.key === 'ArrowUp' || e.key === 'PageUp' || e.key === 'Escape') {
+        e.preventDefault()
+        if (progress.get() >= 0.5) {
+          animateTo(0)
+        }
+      } else if (e.key === 'ArrowRight') {
         e.preventDefault()
         const total = PORTFOLIO_DATA.projects.length
         onCycleProject((projectIndex + 1) % total)
         if (progress.get() < 0.5) animateTo(1)
-      } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
+      } else if (e.key === 'ArrowLeft') {
         e.preventDefault()
         const total = PORTFOLIO_DATA.projects.length
         onCycleProject((projectIndex - 1 + total) % total)
