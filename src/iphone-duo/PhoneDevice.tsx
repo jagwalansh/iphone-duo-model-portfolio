@@ -20,6 +20,9 @@ export type PhoneDeviceProps = ComponentProps<'div'> & {
   coverOverlaySrc?: string
   revealSrc?: string
   scale?: number
+  isAsleep?: boolean
+  sleepOpacity?: number
+  wakeDelay?: number
   onPhoneClick?: (event: React.MouseEvent<HTMLButtonElement>, isLeftHalf: boolean) => void
 }
 
@@ -39,6 +42,9 @@ function PhoneDeviceSurface({
   blur = 28,
   parallax = 1,
   scale = 1.0,
+  isAsleep = false,
+  sleepOpacity = 1.0,
+  wakeDelay = 400,
   onPhoneClick,
   className = '',
   ...props
@@ -185,27 +191,92 @@ function PhoneDeviceSurface({
     }).catch(() => { if (!cancelled) setStatus('A screen image could not load. Choose another image.') })
     return () => { cancelled = true; for (const texture of textures) texture.dispose() }
   }, [screenSrc, coverSrc, ready])
+  const isAsleepRef = useRef(isAsleep)
+  isAsleepRef.current = isAsleep
+
   useEffect(() => {
     if (!ready || !surface.current) return
     const current = surface.current
     let cancelled = false
     const textures: Texture[] = []
-    for (const [src, material, map, enabled] of [[screenOverlaySrc, current.model.screen, 'overlayMap', 'hasOverlay'], [coverOverlaySrc, current.model.cover, 'overlayMap', 'hasOverlay'], [revealSrc, current.model.screen, 'revealMap', 'hasReveal']] as const) {
-      material.uniforms[enabled].value = 0
+    for (const [src, material, map, enabled] of [
+      [screenOverlaySrc, current.model.screen, 'overlayMap', 'hasOverlay'],
+      [coverOverlaySrc, current.model.cover, 'overlayMap', 'hasOverlay'],
+      [revealSrc, current.model.screen, 'revealMap', 'hasReveal']
+    ] as const) {
+      if (material === current.model.cover && map === 'overlayMap') {
+        material.uniforms[enabled].value = isAsleepRef.current ? 1 : 0
+      } else {
+        material.uniforms[enabled].value = 0
+      }
       if (!src) continue
       new TextureLoader().loadAsync(src).then(texture => {
         if (cancelled) { texture.dispose(); return }
         texture.colorSpace = SRGBColorSpace
         textures.push(texture)
         material.uniforms[map].value = texture
-        material.uniforms[enabled].value = 1
+        if (material === current.model.cover && map === 'overlayMap') {
+          material.uniforms[enabled].value = isAsleepRef.current ? 1 : 0
+        } else {
+          material.uniforms[enabled].value = 1
+        }
         current.draw()
       }).catch(() => { if (!cancelled) setStatus('Screen content could not load. Choose another image.') })
     }
     current.draw()
     return () => { cancelled = true; textures.forEach(texture => texture.dispose()) }
   }, [screenOverlaySrc, coverOverlaySrc, revealSrc, ready])
-  return <div {...props} className={`duo-device ${className}`} data-progress={amount.toFixed(3)} data-ready={ready}
+
+  // Atmospheric Always-On Display (AOD) Sleep / Wake Cross-fade
+  useEffect(() => {
+    if (!ready || !surface.current) return
+    const current = surface.current
+    const coverUniforms = current.model.cover.uniforms
+    if (!coverUniforms.overlayMap.value) return
+
+    const targetValue = isAsleep ? Math.max(0, Math.min(1, sleepOpacity)) : 0.0
+    let animId: number | null = null
+    let delayTimer: ReturnType<typeof setTimeout> | null = null
+    let prevTime = performance.now()
+
+    function step(now: number) {
+      const dt = Math.min(50, now - prevTime)
+      prevTime = now
+
+      const currentVal = coverUniforms.hasOverlay.value
+      const diff = targetValue - currentVal
+
+      if (Math.abs(diff) > 0.003) {
+        // Sleep: gentle 800ms fade (0.08); Wake: smooth cinematic delayed fade (0.07)
+        const lerpFactor = isAsleep ? 0.08 : 0.07
+        const nextVal = currentVal + diff * lerpFactor
+        coverUniforms.hasOverlay.value = Math.max(0, Math.min(1, nextVal))
+        current.draw()
+        animId = requestAnimationFrame(step)
+      } else {
+        coverUniforms.hasOverlay.value = targetValue
+        current.draw()
+        animId = null
+      }
+    }
+
+    // If waking from sleep (target is 0 and overlay is currently active), delay the animation!
+    if (!isAsleep && coverUniforms.hasOverlay.value > 0.01 && wakeDelay > 0) {
+      delayTimer = setTimeout(() => {
+        prevTime = performance.now()
+        animId = requestAnimationFrame(step)
+      }, wakeDelay)
+    } else {
+      animId = requestAnimationFrame(step)
+    }
+
+    return () => {
+      if (delayTimer) clearTimeout(delayTimer)
+      if (animId) cancelAnimationFrame(animId)
+    }
+  }, [isAsleep, sleepOpacity, wakeDelay, ready])
+
+  return <div {...props} className={`duo-device ${className}`} data-progress={amount.toFixed(3)} data-ready={ready} data-asleep={isAsleep}
   >
     <canvas ref={canvas} aria-hidden="true" />
     <button className="duo-device-target" type="button" aria-label="Fold or unfold phone" aria-pressed={amount >= 0.5} disabled={!ready}

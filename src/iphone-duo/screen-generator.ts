@@ -9,7 +9,11 @@ export interface ScreenTheme {
  * Generates an ultra-crisp 800x1120 Canvas Data URL for the folded Cover Screen.
  * Displays "Welcome to Portfolio", dynamic time, author details, and unfold affordance.
  */
-export function generateCoverScreenTexture(theme: ScreenTheme): string {
+export function generateCoverScreenTexture(_theme?: ScreenTheme): string {
+  return '/wallpapers/cover-screen.png'
+}
+
+export function generateCoverScreenTextureCanvas(theme: ScreenTheme): string {
   const width = 800
   const height = 1120
   const canvas = document.createElement('canvas')
@@ -222,7 +226,11 @@ export function generateCoverScreenTexture(theme: ScreenTheme): string {
  * Left Screen (0..800): Overview, Navigation, Skills, Bio
  * Right Screen (800..1600): Active Project Showcase, Features, Tech Stack, Links
  */
-export function generateInnerScreenTexture(activeProject: Project, theme: ScreenTheme): string {
+export function generateInnerScreenTexture(_activeProject?: Project, _theme?: ScreenTheme): string {
+  return '/wallpapers/inner-screen.png'
+}
+
+export function generateInnerScreenTextureCanvas(activeProject: Project, theme: ScreenTheme): string {
   const width = 1600
   const height = 1120
   const canvas = document.createElement('canvas')

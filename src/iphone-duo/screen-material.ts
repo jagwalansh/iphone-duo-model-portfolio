@@ -47,7 +47,7 @@ export function createScreenMaterial(cover: boolean) {
         vec4 reveal = sampleLayer(revealMap, clamp(revealUv, vec2(0.001), vec2(0.999)), lod);
         float revealInside = step(0.0, revealUv.x) * step(revealUv.x, 1.0) * step(0.0, revealUv.y) * step(revealUv.y, 1.0);
         background.rgb = mix(background.rgb, reveal.rgb, reveal.a * hasReveal * revealInside);
-        vec2 contentUv = uv;
+        vec2 contentUv = backgroundUv;
         vec4 content = sampleLayer(overlayMap, clamp(contentUv, vec2(0.001), vec2(0.999)), lod);
         float inside = step(0.0, contentUv.x) * step(contentUv.x, 1.0) * step(0.0, contentUv.y) * step(contentUv.y, 1.0);
         return vec4(mix(background.rgb, content.rgb, content.a * hasOverlay * inside), 1.0);

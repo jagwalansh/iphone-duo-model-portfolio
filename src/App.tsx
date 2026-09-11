@@ -41,14 +41,14 @@ export default function App() {
 
   const activeProject = PORTFOLIO_DATA.projects[projectIndex]
 
-  // Pure Apple studio light mode textures
+  // Apple Duo authentic prototype textures matching user photos
   const coverTexture = useMemo(() => {
-    return generateCoverScreenTexture({ isDark: false })
+    return '/wallpapers/cover-screen.png'
   }, [])
 
   const innerTexture = useMemo(() => {
-    return generateInnerScreenTexture(activeProject, { isDark: false })
-  }, [activeProject])
+    return '/wallpapers/inner-screen.png'
+  }, [])
 
   const handleUpdateScale = useCallback((newScale: number) => {
     const clamped = Math.round(Math.max(0.6, Math.min(3.0, newScale)) * 100) / 100
@@ -143,9 +143,136 @@ function InteractivePhone({
   const projectIdxRef = useRef(projectIndex)
   projectIdxRef.current = projectIndex
 
+  // Always-On Display (AOD) Sleep & Wake state
+  const [isAsleep, setIsAsleep] = useState(false)
+  const isAsleepRef = useRef(isAsleep)
+  isAsleepRef.current = isAsleep
+
+  // Delay before the wake crossfade animation begins (ms)
+  const [wakeDelay, setWakeDelay] = useState(400)
+  const wakeLockoutRef = useRef(0)
+
+  const inactivityTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const lastActivityRef = useRef(Date.now())
+  const tapWokePhoneRef = useRef(false)
+
+  const wakePhone = useCallback(() => {
+    if (isAsleepRef.current) {
+      setIsAsleep(false)
+      wakeLockoutRef.current = Date.now() + 600
+      console.log('%c☀️ Apple Duo woke up (Always-On Display dismissed)', 'color: #f59e0b; font-weight: bold;')
+    }
+    lastActivityRef.current = Date.now()
+  }, [])
+
+  const sleepPhone = useCallback(() => {
+    if (progress.get() < 0.15) {
+      setIsAsleep(true)
+      console.log('%c🌙 Apple Duo entered Always-On Display (AOD)', 'color: #94a3b8; font-style: italic;')
+    }
+  }, [progress])
+
+  const resetInactivityTimer = useCallback(() => {
+    if (inactivityTimerRef.current) {
+      clearTimeout(inactivityTimerRef.current)
+      inactivityTimerRef.current = null
+    }
+    // Only schedule sleep if phone is currently folded shut on the lock screen
+    if (progress.get() < 0.15) {
+      inactivityTimerRef.current = setTimeout(() => {
+        if (progress.get() < 0.15) {
+          sleepPhone()
+        }
+      }, 5000)
+    }
+  }, [progress, sleepPhone])
+
+  // Inactivity tracking: resets 5s countdown on user activity, wakes on click/tap
+  useEffect(() => {
+    resetInactivityTimer()
+
+    let lastMoveTime = 0
+    function handleUserActivity(e?: Event) {
+      const now = Date.now()
+
+      // If asleep, mouse movement alone doesn't wake the phone (tapping/clicking/keys do!)
+      if (isAsleepRef.current) {
+        return
+      }
+
+      // Throttle pointer move to avoid continuous timer restarts
+      if (e?.type === 'pointermove' || e?.type === 'mousemove') {
+        if (now - lastMoveTime < 250) return
+        lastMoveTime = now
+      }
+
+      lastActivityRef.current = now
+      resetInactivityTimer()
+    }
+
+    function handleGlobalPointerDown() {
+
+      if (isAsleepRef.current) {
+        tapWokePhoneRef.current = true
+        wakePhone()
+        resetInactivityTimer()
+      } else {
+        tapWokePhoneRef.current = false
+      }
+    }
+
+    function handleGlobalPointerUp() {
+      setTimeout(() => {
+        tapWokePhoneRef.current = false
+      }, 100)
+    }
+
+    window.addEventListener('pointermove', handleUserActivity, { passive: true })
+    window.addEventListener('pointerdown', handleGlobalPointerDown, { passive: true })
+    window.addEventListener('touchstart', handleGlobalPointerDown, { passive: true })
+    window.addEventListener('pointerup', handleGlobalPointerUp, { passive: true })
+    window.addEventListener('touchend', handleGlobalPointerUp, { passive: true })
+
+    const unsubscribe = progress.on('change', (val) => {
+      if (val >= 0.15) {
+        // Unfolding phone wakes it immediately and cancels sleep timer
+        if (isAsleepRef.current) {
+          setIsAsleep(false)
+        }
+        if (inactivityTimerRef.current) {
+          clearTimeout(inactivityTimerRef.current)
+          inactivityTimerRef.current = null
+        }
+      } else {
+        // Phone folded back shut: restart 5s inactivity countdown
+        resetInactivityTimer()
+      }
+    })
+
+    return () => {
+      window.removeEventListener('pointermove', handleUserActivity)
+      window.removeEventListener('pointerdown', handleGlobalPointerDown)
+      window.removeEventListener('touchstart', handleGlobalPointerDown)
+      window.removeEventListener('pointerup', handleGlobalPointerUp)
+      window.removeEventListener('touchend', handleGlobalPointerUp)
+      unsubscribe()
+      if (inactivityTimerRef.current) {
+        clearTimeout(inactivityTimerRef.current)
+      }
+    }
+  }, [resetInactivityTimer, progress, wakePhone])
+
   // Handle in-phone clicks
   const handlePhoneClick = useCallback(
     (_event: React.MouseEvent<HTMLButtonElement>, isLeftHalf: boolean) => {
+      // If sleeping in AOD mode, or if this tap was to wake up the phone, do NOT unfold!
+      if (isAsleepRef.current || tapWokePhoneRef.current || Date.now() < wakeLockoutRef.current) {
+        tapWokePhoneRef.current = false
+        wakePhone()
+        resetInactivityTimer()
+        return
+      }
+
       const isFolded = progress.get() < 0.5
       if (isFolded) {
         animateTo(1)
@@ -159,7 +286,7 @@ function InteractivePhone({
         }
       }
     },
-    [progress, animateTo, projectIndex, onCycleProject]
+    [progress, animateTo, projectIndex, onCycleProject, wakePhone, resetInactivityTimer]
   )
 
   // Register Console Controller API on window.phone and window.duo
@@ -183,12 +310,30 @@ function InteractivePhone({
       setSize(val: number) {
         return controller.setScale(val)
       },
+      get isAsleep() {
+        return isAsleepRef.current
+      },
+      get wakeDelay() {
+        return wakeDelay
+      },
+      setWakeDelay(ms: number) {
+        setWakeDelay(ms)
+        console.log(`%c⏱️ Wake animation delay set to: ${ms}ms`, 'color: #10b981; font-weight: bold;')
+      },
+      sleep() {
+        sleepPhone()
+      },
+      wake() {
+        wakePhone()
+        resetInactivityTimer()
+      },
       setFold(degrees: number) {
         const clamped = Math.max(0, Math.min(180, degrees)) / 180
         animateTo(clamped)
         console.log(`%c📱 Phone fold angle set to: ${degrees}°`, 'color: #6366f1; font-weight: bold;')
       },
       unfold() {
+        wakePhone()
         animateTo(1)
         console.log('%c📱 Phone unfolding...', 'color: #6366f1; font-weight: bold;')
       },
@@ -239,6 +384,8 @@ function InteractivePhone({
       help() {
         console.group('%c📱 Apple Duo Console Control Guide', 'color: #4f46e5; font-size: 14px; font-weight: bold;')
         console.table({
+          'phone.sleep()': 'Enter Always-On Display (dark blur with time)',
+          'phone.wake()': 'Wake phone back to bright lock screen',
           'phone.scale = 1.8': 'Set phone scale (property setter)',
           'phone.setScale(1.6)': 'Set phone scale (function call, range: 0.8 - 3.0)',
           'phone.getScale()': 'Get current phone scale',
@@ -277,14 +424,127 @@ function InteractivePhone({
     }
   }, [onUpdateScale, animateTo, toggle, onCycleProject, onToggleSlider, progress])
 
-  // Scroll, Wheel & Touch Gestures for Fold / Unfold & Project Navigation
+  // Scroll, Wheel & Touch Gestures - Open and fold in exact sync with scroll
   useEffect(() => {
-    let accumulatedDeltaY = 0
-    let accumulatedDeltaX = 0
-    let lastWheelTime = 0
-    let resetTimer: ReturnType<typeof setTimeout> | null = null
-    let lastFoldActionTime = 0
-    let lastProjectCycleTime = 0
+    // Total scroll distance (pixels) required to transition from 0 (shut) to 1 (unfolded flat)
+    const FOLD_SCROLL_SPAN = 450
+    // Scroll threshold to navigate between portfolio projects when fully unfolded
+    const PROJECT_SCROLL_THRESHOLD = 130
+
+    let targetProgress = progress.get()
+    let rafId: number | null = null
+    let projectScrollAccumulator = 0
+    let isActivelyScrolling = false
+    let scrollEndTimer: ReturnType<typeof setTimeout> | null = null
+    let projectScrollResetTimer: ReturnType<typeof setTimeout> | null = null
+
+    // Keep targetProgress in sync with external animations (e.g. click unfold, console, keyboard)
+    const unsubscribeProgress = progress.on('change', (latest) => {
+      if (!isActivelyScrolling) {
+        targetProgress = latest
+      }
+    })
+
+    function lerpStep() {
+      const current = progress.get()
+      const diff = targetProgress - current
+
+      if (Math.abs(diff) > 0.0006) {
+        // Silky exponential lerp gives immediate tactile feedback without jitter
+        const next = current + diff * 0.22
+        setValue(next)
+        rafId = requestAnimationFrame(lerpStep)
+      } else {
+        setValue(targetProgress)
+        rafId = null
+      }
+    }
+
+    function updateTargetProgress(newTarget: number) {
+      // Clamp between 0 and 1, with magnetic snap at extremes
+      let clamped = Math.max(0, Math.min(1, newTarget))
+      if (clamped < 0.008) clamped = 0
+      if (clamped > 0.992) clamped = 1
+
+      targetProgress = clamped
+
+      if (!rafId) {
+        rafId = requestAnimationFrame(lerpStep)
+      }
+    }
+
+    function processScrollDelta(rawDeltaY: number, rawDeltaX: number) {
+      if (isAsleepRef.current) {
+        wakePhone()
+        resetInactivityTimer()
+        return
+      }
+
+      if (Date.now() < wakeLockoutRef.current) {
+        return
+      }
+
+      isActivelyScrolling = true
+      if (scrollEndTimer) clearTimeout(scrollEndTimer)
+      scrollEndTimer = setTimeout(() => {
+        isActivelyScrolling = false
+      }, 200)
+
+      // Dominant delta: prefer vertical scroll, fall back to horizontal if user swipes sideways
+      const delta = Math.abs(rawDeltaY) >= Math.abs(rawDeltaX) * 0.8
+        ? rawDeltaY
+        : rawDeltaX * 0.9
+
+      if (Math.abs(delta) < 0.5) return
+
+      const currentTarget = targetProgress
+      const totalProjects = PORTFOLIO_DATA.projects.length
+
+      // Phase 1: Phone is folding or unfolding (target < 0.999)
+      if (currentTarget < 0.999) {
+        // Reset project scroll accumulator while phone is in fold transition
+        projectScrollAccumulator = 0
+
+        const deltaProgress = delta / FOLD_SCROLL_SPAN
+        updateTargetProgress(currentTarget + deltaProgress)
+        return
+      }
+
+      // Phase 2: Phone is fully unfolded (target >= 0.999)
+      // Scrolling down advances projects; scrolling up reverses projects; scrolling up on Project 0 folds phone shut!
+      if (projectScrollResetTimer) clearTimeout(projectScrollResetTimer)
+      projectScrollResetTimer = setTimeout(() => {
+        projectScrollAccumulator = 0
+      }, 350)
+
+      projectScrollAccumulator += delta
+
+      if (delta > 0) {
+        // Scrolling DOWN while fully open -> advance to next project
+        if (projectScrollAccumulator >= PROJECT_SCROLL_THRESHOLD) {
+          projectScrollAccumulator = 0
+          const next = (projectIdxRef.current + 1) % totalProjects
+          onCycleProject(next)
+        }
+      } else {
+        // Scrolling UP while fully open
+        if (projectIdxRef.current > 0) {
+          // On project > 0: reverse to previous project
+          if (projectScrollAccumulator <= -PROJECT_SCROLL_THRESHOLD) {
+            projectScrollAccumulator = 0
+            const prev = (projectIdxRef.current - 1 + totalProjects) % totalProjects
+            onCycleProject(prev)
+          }
+        } else {
+          // On Project 0: small 30px buffer, then start folding phone back shut in sync with scroll!
+          if (projectScrollAccumulator <= -30) {
+            const foldDelta = (projectScrollAccumulator + 30) / FOLD_SCROLL_SPAN
+            updateTargetProgress(1 + foldDelta)
+            projectScrollAccumulator = 0
+          }
+        }
+      }
+    }
 
     function handleWheel(e: WheelEvent) {
       // Allow interaction with on-screen scale HUD without hijacking
@@ -292,122 +552,85 @@ function InteractivePhone({
         return
       }
 
-      // Prevent native page bounce and trackpad history gestures
+      // Prevent native page bounce / gesture navigation
       e.preventDefault()
 
-      const now = Date.now()
-      const isFolded = progress.get() < 0.5
+      let deltaY = e.deltaY
+      let deltaX = e.deltaX
 
-      // Reset accumulation if wheel events have settled
-      if (now - lastWheelTime > 180) {
-        accumulatedDeltaY = 0
-        accumulatedDeltaX = 0
+      // Normalize across browsers (e.g. Firefox line mode)
+      if (e.deltaMode === 1) {
+        deltaY *= 24
+        deltaX *= 24
+      } else if (e.deltaMode === 2) {
+        deltaY *= window.innerHeight
+        deltaX *= window.innerHeight
       }
-      lastWheelTime = now
 
-      accumulatedDeltaY += e.deltaY
-      accumulatedDeltaX += e.deltaX
-
-      if (resetTimer) clearTimeout(resetTimer)
-      resetTimer = setTimeout(() => {
-        accumulatedDeltaY = 0
-        accumulatedDeltaX = 0
-      }, 220)
-
-      // Forward direction = scroll down (wheel down, trackpad 2-finger swipe down) or right
-      const isScrollingForward = accumulatedDeltaY > 15 || accumulatedDeltaX > 18
-      // Backward direction = scroll up (wheel up, trackpad 2-finger swipe up) or left
-      const isScrollingBackward = accumulatedDeltaY < -15 || accumulatedDeltaX < -18
-
-      if (isFolded) {
-        // When folded shut: scrolling down/forward opens the phone!
-        if (isScrollingForward) {
-          animateTo(1)
-          lastFoldActionTime = now
-          accumulatedDeltaY = 0
-          accumulatedDeltaX = 0
-        }
-      } else {
-        // When unfolded:
-        if (isScrollingBackward) {
-          // Scrolling up/backward folds the phone back shut!
-          animateTo(0)
-          lastFoldActionTime = now
-          accumulatedDeltaY = 0
-          accumulatedDeltaX = 0
-        } else if (isScrollingForward) {
-          // Scrolling down while open cycles to next project
-          // (Requires settled phone state and debounce so opening inertia doesn't trigger it)
-          const isOpenAndSettled = progress.get() >= 0.85 && (now - lastFoldActionTime > 900)
-          if (isOpenAndSettled && now - lastProjectCycleTime > 420 && Math.abs(accumulatedDeltaY) > 45) {
-            const total = PORTFOLIO_DATA.projects.length
-            const next = (projectIdxRef.current + 1) % total
-            onCycleProject(next)
-            lastProjectCycleTime = now
-            accumulatedDeltaY = 0
-            accumulatedDeltaX = 0
-          }
-        }
-      }
+      processScrollDelta(deltaY, deltaX)
     }
 
-    // Touch swipe gestures for mobile & touch displays
-    let touchStartY = 0
-    let touchStartX = 0
-    let touchStartTime = 0
+    // Touch gesture support for mobile & tablet displays
+    let lastTouchY = 0
+    let lastTouchX = 0
+    let isTouching = false
 
     function handleTouchStart(e: TouchEvent) {
       if ((e.target as HTMLElement)?.closest?.('.size-hud')) return
       if (e.touches.length === 1) {
-        touchStartY = e.touches[0].clientY
-        touchStartX = e.touches[0].clientX
-        touchStartTime = Date.now()
+        lastTouchY = e.touches[0].clientY
+        lastTouchX = e.touches[0].clientX
+        isTouching = true
       }
     }
 
-    function handleTouchEnd(e: TouchEvent) {
+    function handleTouchMove(e: TouchEvent) {
+      if (!isTouching || e.touches.length !== 1) return
       if ((e.target as HTMLElement)?.closest?.('.size-hud')) return
-      if (e.changedTouches.length === 1) {
-        const deltaY = touchStartY - e.changedTouches[0].clientY // > 0: swipe up (scroll down)
-        const deltaX = touchStartX - e.changedTouches[0].clientX // > 0: swipe left (scroll forward)
-        const duration = Date.now() - touchStartTime
 
-        if (duration < 650) {
-          const isFolded = progress.get() < 0.5
-          const isSwipeForward = deltaY > 32 || deltaX > 32
-          const isSwipeBackward = deltaY < -32 || deltaX < -32
+      const currentY = e.touches[0].clientY
+      const currentX = e.touches[0].clientX
 
-          if (isFolded && isSwipeForward) {
-            animateTo(1)
-            lastFoldActionTime = Date.now()
-          } else if (!isFolded && isSwipeBackward) {
-            animateTo(0)
-            lastFoldActionTime = Date.now()
-          } else if (!isFolded && isSwipeForward && progress.get() >= 0.85) {
-            const total = PORTFOLIO_DATA.projects.length
-            const next = (projectIdxRef.current + 1) % total
-            onCycleProject(next)
-          }
-        }
-      }
+      // Dragging finger UP corresponds to scrolling DOWN
+      const deltaY = (lastTouchY - currentY) * 1.6
+      const deltaX = (lastTouchX - currentX) * 1.6
+
+      lastTouchY = currentY
+      lastTouchX = currentX
+
+      processScrollDelta(deltaY, deltaX)
+    }
+
+    function handleTouchEnd() {
+      isTouching = false
     }
 
     window.addEventListener('wheel', handleWheel, { passive: false })
     window.addEventListener('touchstart', handleTouchStart, { passive: true })
+    window.addEventListener('touchmove', handleTouchMove, { passive: true })
     window.addEventListener('touchend', handleTouchEnd, { passive: true })
 
     return () => {
       window.removeEventListener('wheel', handleWheel)
       window.removeEventListener('touchstart', handleTouchStart)
+      window.removeEventListener('touchmove', handleTouchMove)
       window.removeEventListener('touchend', handleTouchEnd)
-      if (resetTimer) clearTimeout(resetTimer)
+      unsubscribeProgress()
+      if (rafId) cancelAnimationFrame(rafId)
+      if (scrollEndTimer) clearTimeout(scrollEndTimer)
+      if (projectScrollResetTimer) clearTimeout(projectScrollResetTimer)
     }
-  }, [progress, animateTo, onCycleProject])
+  }, [progress, setValue, onCycleProject, wakePhone, resetInactivityTimer])
 
   // Keyboard controls
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
       if (e.target instanceof HTMLInputElement) return
+
+      if (isAsleepRef.current) {
+        wakePhone()
+        resetInactivityTimer()
+      }
 
       if (e.key.toLowerCase() === 'c') {
         e.preventDefault()
@@ -417,27 +640,32 @@ function InteractivePhone({
         toggle()
       } else if (e.key === 'ArrowDown' || e.key === 'PageDown') {
         e.preventDefault()
-        if (progress.get() < 0.5) {
+        if (progress.get() < 0.92) {
           animateTo(1)
         } else {
           const total = PORTFOLIO_DATA.projects.length
           onCycleProject((projectIndex + 1) % total)
         }
-      } else if (e.key === 'ArrowUp' || e.key === 'PageUp' || e.key === 'Escape') {
+      } else if (e.key === 'ArrowUp' || e.key === 'PageUp') {
         e.preventDefault()
-        if (progress.get() >= 0.5) {
+        if (progress.get() >= 0.92 && projectIndex > 0) {
+          onCycleProject(projectIndex - 1)
+        } else {
           animateTo(0)
         }
+      } else if (e.key === 'Escape') {
+        e.preventDefault()
+        animateTo(0)
       } else if (e.key === 'ArrowRight') {
         e.preventDefault()
         const total = PORTFOLIO_DATA.projects.length
         onCycleProject((projectIndex + 1) % total)
-        if (progress.get() < 0.5) animateTo(1)
+        if (progress.get() < 0.92) animateTo(1)
       } else if (e.key === 'ArrowLeft') {
         e.preventDefault()
         const total = PORTFOLIO_DATA.projects.length
         onCycleProject((projectIndex - 1 + total) % total)
-        if (progress.get() < 0.5) animateTo(1)
+        if (progress.get() < 0.92) animateTo(1)
       } else if (e.key === '+' || e.key === '=') {
         e.preventDefault()
         onUpdateScale(scaleRef.current + 0.1)
@@ -448,14 +676,18 @@ function InteractivePhone({
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [toggle, progress, animateTo, projectIndex, onCycleProject, onToggleSlider, onUpdateScale])
+  }, [toggle, progress, animateTo, projectIndex, onCycleProject, onToggleSlider, onUpdateScale, wakePhone, resetInactivityTimer])
 
   return (
     <div className="fullscreen-phone-container">
       <PhoneDevice
         modelSrc="/models/iphone-duo.glb"
         coverSrc={coverTexture}
+        coverOverlaySrc="/wallpapers/cover-screen-aod.png"
         screenSrc={innerTexture}
+        isAsleep={isAsleep}
+        sleepOpacity={0.9}
+        wakeDelay={wakeDelay}
         rotation={-6}
         exposure={1.2}
         blur={24}
